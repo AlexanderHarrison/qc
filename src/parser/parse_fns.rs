@@ -162,13 +162,7 @@ impl Parsable for ParsedExpr {
         let mut operators = Vec::new();
 
         loop {
-            let expr = if parser.peek().0 == Token::LeftCurlyBracket {
-                let braced_expr = ParsedBracedExpr::parse(parser, data);
-                ParsedSimpleExpr::BracedExpr(braced_expr)
-            } else {
-                let atom = ParsedAtom::parse(parser, data);
-                ParsedSimpleExpr::InlineExpr(atom)
-            };
+            let expr = ParsedSimpleExpr::parse(parser, data);
             simple_exprs.push(expr);
 
             let token = parser.peek().0;
@@ -188,6 +182,54 @@ impl Parsable for ParsedExpr {
     }
 }
 
+impl Parsable for ParsedSimpleExpr {
+    type Output = Self;
+
+    fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Self::Output {
+        let expr_type = if parser.peek().0 == Token::LeftCurlyBracket {
+            let braced_expr = ParsedBracedExpr::parse(parser, data);
+            SimpleExprType::BracedExpr(braced_expr)
+        } else {
+            let atom = ParsedAtom::parse(parser, data);
+            SimpleExprType::InlineExpr(atom)
+        };
+
+        let mut accesses = Vec::new();
+        while parser.peek().0 == Token::Period {
+            accesses.push(ParsedExprAccess::parse(parser, data))
+        }
+
+        ParsedSimpleExpr {
+            expr_type,
+            accesses: accesses.into_boxed_slice(),
+        }
+    }
+}
+
+impl Parsable for ParsedExprAccess {
+    type Output = Self;
+
+    fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Self::Output {
+        parser.expect_token(Token::Period);
+
+        let name_span = parser.expect_token(Token::LowString);
+        let name = data.lookup_string(parser.span_string(name_span));
+
+        if parser.peek().0 == Token::LeftParen {
+            let arguments = ParsedParenList::<ParsedExpr>::parse(parser, data);
+
+            ParsedExprAccess::Method {
+                name,
+                arguments,
+            }
+        } else {
+            ParsedExprAccess::Field {
+                name
+            }
+        }
+    }
+}
+
 impl Parsable for ParsedBracedExpr {
     type Output = Self;
 
@@ -200,6 +242,13 @@ impl Parsable for ParsedBracedExpr {
                 // TODO rest of statements here
                 (Token::LetKeyword | Token::ReturnKeyword, _) => {
                     statements.push(ParsedStatement::parse(parser, data))
+                }
+
+                // might be parsed as an expression or a statement
+                (Token::IfKeyword, _) => {
+                    let if_statement = ParsedIfStatement::parse(parser, data);
+
+                    statements.push(ParsedStatement::If { if_statement })
                 }
 
                 (Token::RightCurlyBracket, _) => {
@@ -241,11 +290,17 @@ impl Parsable for ParsedAtom {
                     ParsedAtom::Variable { name }
                 }
             }
+            (Token::IfKeyword, _) => {
+                let if_statement = ParsedIfStatement::parse(parser, data);
+                ParsedAtom::If { if_statement }
+            }
+            (Token::ForKeyword, _) => {
+                todo!()
+            }
+
+            // TODO tuples?
             (Token::LeftParen, _) => {
                 parser.take_next();
-                // either unit type or precedence specifier 
-                // TODO
-
                 assert!(parser.take_next().0 == Token::RightParen); // tuples?
                 ParsedAtom::Unit
             }
@@ -289,6 +344,10 @@ impl Parsable for ParsedStatement {
                     expr,
                 }
             },
+            Token::IfKeyword => {
+                let if_statement = ParsedIfStatement::parse(parser, data);
+                ParsedStatement::If { if_statement }
+            }
             Token::ReturnKeyword => {
                 parser.take_next();
 
@@ -304,3 +363,38 @@ impl Parsable for ParsedStatement {
     }
 }
 
+
+impl Parsable for ParsedIfStatement {
+    type Output = ParsedIfStatement;
+
+    fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Self::Output {
+        parser.expect_token(Token::IfKeyword);
+
+        let condition = ParsedExpr::parse(parser, data);
+        let expr_true = ParsedBracedExpr::parse(parser, data);
+        let mut paths = vec![IfPath { condition, expr_true }];
+
+        // else case required in expression position
+        let else_expr = loop {
+            if parser.peek().0 == Token::ElseKeyword {
+                parser.take_next();
+                if parser.peek().0 == Token::IfKeyword {
+                    parser.take_next();
+
+                    let condition = ParsedExpr::parse(parser, data);
+                    let expr_true = ParsedBracedExpr::parse(parser, data);
+                    paths.push(IfPath { condition, expr_true });
+                } else {
+                     break Some(ParsedBracedExpr::parse(parser, data));
+                }
+            } else {
+                break None;
+            }
+        };
+
+        ParsedIfStatement {
+            paths: paths.into_boxed_slice(),
+            else_expr,
+        }
+    }
+}

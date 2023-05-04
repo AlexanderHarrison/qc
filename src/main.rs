@@ -7,6 +7,8 @@ use err::{err, Unwrappable};
 mod parser;
 use parser::Parsable;
 mod alloc;
+mod compiler;
+mod typing;
 
 const USAGE: &'static str = "qc <filename>";
 
@@ -20,5 +22,5 @@ fn main() {
     let mut parser = parser::Parser::new(&tokens, &s);
     let mut data = parser::ParseData::new();
     let file = parser::ParsedFile::parse(&mut parser, &mut data);
-    println!("{:?}", file);
+    println!("{}", file.fns.len());
 }

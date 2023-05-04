@@ -97,10 +97,30 @@ pub struct ParsedExpr {
     pub operators: Box<[InfixOperator]>,
 }
 
+/// No infix operators, allows fields and methods.
+/// such as a.test, (1 + 2).test(), { let x = 2; x }.field.test
+#[derive(Debug)]
+pub struct ParsedSimpleExpr {
+    pub expr_type: SimpleExprType,
+    pub accesses: Box<[ParsedExprAccess]>
+}
+
+/// field or method access
+#[derive(Debug)]
+pub enum ParsedExprAccess {
+    Field {
+        name: StrRef,
+    },
+    Method {
+        name: StrRef,
+        arguments: Box<[ParsedExpr]>,
+    }
+}
+
 /// No infix operators.
 /// such as 1, (1 + 2), { let x = 2; x }, add(1, 2)
 #[derive(Debug)]
-pub enum ParsedSimpleExpr {
+pub enum SimpleExprType {
     BracedExpr(ParsedBracedExpr),
     InlineExpr(ParsedAtom)
 }
@@ -112,7 +132,7 @@ pub struct ParsedBracedExpr {
     pub return_expr: Option<Box<ParsedExpr>>,
 }
 
-/// such as 1, (2 + 4), add(1, 2)
+/// such as 1, (2 + 4), a, add(1, 2), s.field
 #[derive(Debug)]
 pub enum ParsedAtom {
     FunctionCall {
@@ -122,9 +142,24 @@ pub enum ParsedAtom {
     Variable {
         name: StrRef,
     },
+    If {
+        if_statement: ParsedIfStatement
+    },
     Unit,
     IntegerLiteral(isize),
     FloatLiteral(f64),
+}
+
+#[derive(Debug)]
+pub struct ParsedIfStatement {
+    pub paths: Box<[IfPath]>,
+    pub else_expr: Option<ParsedBracedExpr>,
+}
+
+#[derive(Debug)]
+pub struct IfPath {
+    pub condition: ParsedExpr,
+    pub expr_true: ParsedBracedExpr,
 }
 
 #[derive(Debug)]
@@ -135,5 +170,8 @@ pub enum ParsedStatement {
     },
     Return {
         expr: ParsedExpr,
+    },
+    If {
+        if_statement: ParsedIfStatement
     }
 }

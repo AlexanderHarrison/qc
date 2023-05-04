@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 bumpalo = "3.12.1"
 logos = "0.13"
+
+[profile.release]
+debug = true

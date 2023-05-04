@@ -34,14 +34,20 @@ pub enum Token {
     #[token("&")] Reference,
     #[token("?")] QuestionMark,
     #[token("#[")] DirectiveStart,
-    #[regex(r"[\t \n]+", logos::skip)] Whitespace,
 
     #[token("->")] RightArrow,
     #[token("fn")] FnKeyword,
     #[token("let")] LetKeyword,
     #[token("return")] ReturnKeyword,
     #[token("struct")] StructKeyword,
+    #[token("if")] IfKeyword,
+    #[token("else")] ElseKeyword,
+    #[token("for")] ForKeyword,
 
+    #[regex(r"[\t \n]+", logos::skip)] Whitespace,
+    #[regex(r"//.*", logos::skip)] Comment,
+
+    // TODO merge capstring + lowstring
     #[regex("[A-Z][a-zA-Z0-9_]*")]
     CapString,
 
@@ -49,7 +55,7 @@ pub enum Token {
     LowString,
 
     #[regex(r#""[^"]"#)]
-    ExplicitString,
+    StringLiteral,
 
     #[regex(r"-?[0-9]+\.[0-9]+")]
     Float,
@@ -57,8 +63,7 @@ pub enum Token {
     #[regex(r"-?[0-9]+")]
     Integer,
 
-    #[regex(r"//.*", logos::skip)] Comment,
-
+    // placed at bottom to avoid collisions with float regex
     #[token("-")] Minus,
     #[token("+")] Plus,
 }

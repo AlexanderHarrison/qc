@@ -3,14 +3,19 @@ use crate::lexer::{Token, Span};
 use crate::alloc::StaticBumpAllocator;
 
 pub struct Parser<'a> {
-    pub position: usize,
-    pub tokens: &'a [(Token, Span)],
-    pub file: &'a str,
+    position: usize,
+    tokens: &'a [(Token, Span)],
+    file: &'a str,
 }
 
+/// Coincides with a base type without references.
+/// The actual data is stored at 'index' in ParseData.types
+/// E.g. I32, (), bool
 #[derive(Copy, Clone, Debug)]
 pub struct TypeRef { index: usize, }
 
+/// Comparing strings is expensive and done a lot in compilers.
+/// Using this type allows us to compare pointers rather than data
 #[derive(Copy, Clone, Debug)]
 pub struct StrRef { s: &'static str, }
 
@@ -52,6 +57,7 @@ impl ParseData {
         }
     }
 
+    // todo refactor. kinda wack. reduce to one lookup? check if bottleneck
     pub fn lookup_type<'b>(&'b mut self, type_string: &'b str) -> TypeRef {
         let str_ref = self.lookup_string(type_string);
         
