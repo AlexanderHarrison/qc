@@ -47,7 +47,7 @@ impl ParseData {
     pub fn new() -> Self {
         let mut string_allocator = StaticBumpAllocator::new();
         let types = vec![
-            TypeData::new(StrRef { s: string_allocator.alloc("()") }),
+            TypeData::new(StrRef { s: string_allocator.alloc_str("()") }),
         ];
 
         ParseData {
@@ -75,7 +75,7 @@ impl ParseData {
         match self.strings.iter().find(|s| *s == string) {
             Some(&s) => s,
             None => {
-                let s = StrRef { s: self.string_allocator.alloc(string) };
+                let s = StrRef { s: self.string_allocator.alloc_str(string) };
                 self.strings.push(s);
                 s
             }
