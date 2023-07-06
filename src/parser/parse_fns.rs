@@ -1,4 +1,5 @@
 use crate::lexer::Token;
+use crate::typing::Type;
 use super::*;
 
 impl Parsable for ParsedFile {
@@ -28,7 +29,7 @@ impl Parsable for ParsedStruct {
         parser.expect_token(Token::StructKeyword);
 
         let name_span = parser.expect_token(Token::CapString);
-        let name = data.lookup_string(parser.span_string(name_span));
+        let name = data.strings.lookup_string(parser.span_string(name_span));
 
         let fields = ParsedCurlyBracketList::<ParsedField>::parse(parser, data);
 
@@ -43,11 +44,11 @@ impl Parsable for ParsedField {
     type Output = Self;
     fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> ParsedField {
         let name_span = parser.expect_token(Token::LowString);
-        let name = data.lookup_string(parser.span_string(name_span));
+        let name = data.strings.lookup_string(parser.span_string(name_span));
 
         parser.expect_token(Token::Colon);
 
-        let field_type = ParsedType::parse(parser, data);
+        let field_type = Type::parse(parser, data);
 
         ParsedField {
             name,
@@ -61,15 +62,15 @@ impl Parsable for ParsedFn {
     fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> ParsedFn {
         parser.expect_token(Token::FnKeyword);
         let name_span = parser.expect_token(Token::LowString);
-        let name = data.lookup_string(parser.span_string(name_span));
+        let name = data.strings.lookup_string(parser.span_string(name_span));
 
         let input_args = ParsedParenList::<ParsedArgument>::parse(parser, data);
 
         let return_type = match parser.try_expect_token(Token::RightArrow) {
-            Some(_) => ParsedType::parse(parser, data),
-            None => ParsedType {
-                type_ref: data.lookup_type("()"),
-                references: Box::new([])
+            Some(_) => Type::parse(parser, data),
+            None => Type {
+                type_ref: data.type_names.lookup_type(data.strings.lookup_string("()")),
+                references: References::new(),
             },
         };
 
@@ -88,11 +89,11 @@ impl Parsable for ParsedArgument {
     type Output = Self;
     fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> ParsedArgument {
         let name_span = parser.expect_token(Token::LowString);
-        let name = data.lookup_string(parser.span_string(name_span));
+        let name = data.strings.lookup_string(parser.span_string(name_span));
 
         parser.expect_token(Token::Colon);
 
-        let arg_type = ParsedType::parse(parser, data);
+        let arg_type = Type::parse(parser, data);
 
         ParsedArgument {
             name,
@@ -101,11 +102,11 @@ impl Parsable for ParsedArgument {
     }
 }
 
-impl Parsable for ParsedType {
+impl Parsable for Type {
     type Output = Self;
 
-    fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> ParsedType {
-        let mut references = Vec::new();
+    fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Type {
+        let mut references = References::new();
 
         while parser.peek().0 == Token::Reference {
             references.push(ParsedReference::parse(parser, data))
@@ -113,11 +114,11 @@ impl Parsable for ParsedType {
 
         let name_span = parser.expect_token(Token::CapString);
         let name = parser.span_string(name_span);
-        let type_ref = data.lookup_type(name);
+        let type_ref = data.type_names.lookup_type(data.strings.lookup_string(name));
 
-        ParsedType {
+        Type {
             type_ref,
-            references: references.into_boxed_slice(),
+            references,
         }
     }
 }
@@ -155,7 +156,7 @@ impl Parsable for ParsedReference {
 }
 
 impl Parsable for ParsedExpr {
-    type Output = ParsedExpr;
+    type Output = Self;
 
     fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Self::Output {
         let mut simple_exprs = Vec::new();
@@ -178,6 +179,7 @@ impl Parsable for ParsedExpr {
         ParsedExpr {
             simple_exprs: simple_exprs.into_boxed_slice(),
             operators: operators.into_boxed_slice(),
+            ret_type: None,
         }
     }
 }
@@ -202,6 +204,7 @@ impl Parsable for ParsedSimpleExpr {
         ParsedSimpleExpr {
             expr_type,
             accesses: accesses.into_boxed_slice(),
+            ret_type: None,
         }
     }
 }
@@ -213,7 +216,7 @@ impl Parsable for ParsedExprAccess {
         parser.expect_token(Token::Period);
 
         let name_span = parser.expect_token(Token::LowString);
-        let name = data.lookup_string(parser.span_string(name_span));
+        let name = data.strings.lookup_string(parser.span_string(name_span));
 
         if parser.peek().0 == Token::LeftParen {
             let arguments = ParsedParenList::<ParsedExpr>::parse(parser, data);
@@ -258,6 +261,12 @@ impl Parsable for ParsedBracedExpr {
                         return_expr: None,
                     }
                 }
+
+                (Token::LeftCurlyBracket, _) => {
+                    let expr = ParsedBracedExpr::parse(parser, data);
+                    statements.push(ParsedStatement::SubBracedExpr { expr })
+                }
+
                 _ => {
                     let return_expr = ParsedExpr::parse(parser, data);
                     parser.expect_token(Token::RightCurlyBracket);
@@ -278,7 +287,7 @@ impl Parsable for ParsedAtom {
         match parser.peek() {
             (Token::LowString, span) => {
                 parser.take_next();
-                let name = data.lookup_string(parser.span_string(span));
+                let name = data.strings.lookup_string(parser.span_string(span));
 
                 if matches!(parser.try_peek(), Some((Token::LeftParen, _))) {
                     let arguments = ParsedParenList::<ParsedExpr>::parse(parser, data);
@@ -306,7 +315,7 @@ impl Parsable for ParsedAtom {
             }
             (Token::Integer, span) => {
                 parser.take_next();
-                let n = parser.span_string(span).parse::<isize>().unwrap();
+                let n = parser.span_string(span).parse::<i64>().unwrap();
 
                 ParsedAtom::IntegerLiteral(n)
             }
@@ -325,14 +334,14 @@ impl Parsable for ParsedAtom {
 }
 
 impl Parsable for ParsedStatement {
-    type Output = ParsedStatement;
+    type Output = Self;
 
     fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Self::Output {
         match parser.peek().0 {
             Token::LetKeyword => {
                 parser.take_next();
                 let name_span = parser.expect_token(Token::LowString);
-                let name = data.lookup_string(parser.span_string(name_span));
+                let name = data.strings.lookup_string(parser.span_string(name_span));
 
                 parser.expect_token(Token::SingleEquals);
 
@@ -365,7 +374,7 @@ impl Parsable for ParsedStatement {
 
 
 impl Parsable for ParsedIfStatement {
-    type Output = ParsedIfStatement;
+    type Output = Self;
 
     fn parse(parser: &mut Parser<'_>, data: &mut ParseData) -> Self::Output {
         parser.expect_token(Token::IfKeyword);

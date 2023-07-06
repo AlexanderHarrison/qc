@@ -1,4 +1,3 @@
-use super::*;
 use crate::lexer::{Token, Span};
 use crate::alloc::StaticBumpAllocator;
 
@@ -11,8 +10,14 @@ pub struct Parser<'a> {
 /// Coincides with a base type without references.
 /// The actual data is stored at 'index' in ParseData.types
 /// E.g. I32, (), bool
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TypeRef { index: usize, }
+impl TypeRef { pub fn index(self) -> usize { self.index } }
+
+pub const UNIT_TYPE: TypeRef = TypeRef { index: 0 };
+pub const INT_TYPE: TypeRef = TypeRef { index: 1 };
+pub const FLOAT_TYPE: TypeRef = TypeRef { index: 2 };
+pub const BOOL_TYPE: TypeRef = TypeRef { index: 3 };
 
 /// Comparing strings is expensive and done a lot in compilers.
 /// Using this type allows us to compare pointers rather than data
@@ -33,49 +38,92 @@ impl std::cmp::PartialEq for StrRef {
     fn eq(&self, other: &StrRef) -> bool { self.s.as_ptr() == other.s.as_ptr() }
 }
 
-impl StrRef {
-    //pub fn inner(self) -> &'static str { self.s }
+impl std::fmt::Display for StrRef {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(fmt, "{}", self.s)
+    }
 }
 
-pub struct ParseData {
+#[derive(Clone, Debug)]
+pub struct TypeNames {
+    names: Vec<StrRef>,
+}
+
+pub struct Strings {
     string_allocator: StaticBumpAllocator,
-    types: Vec<TypeData>,
     strings: Vec<StrRef>,
 }
 
-impl ParseData {
-    pub fn new() -> Self {
-        let mut string_allocator = StaticBumpAllocator::new();
-        let types = vec![
-            TypeData::new(StrRef { s: string_allocator.alloc_str("()") }),
+pub struct ParseData {
+    pub type_names: TypeNames,
+    pub strings: Strings,
+}
+
+impl TypeNames {
+    pub const BUILTIN_TYPE_COUNT: usize = 4;
+    pub fn new(strings: &mut Strings) -> Self {
+        let names = vec![
+            strings.lookup_string("()"),
+            strings.lookup_string("I64"),
+            strings.lookup_string("F64"),
+            strings.lookup_string("Bool"),
         ];
 
-        ParseData {
-            string_allocator,
-            strings: vec![],
-            types,
+        assert_eq!(names.len(), Self::BUILTIN_TYPE_COUNT);
+
+        Self {
+            names
         }
     }
 
-    // todo refactor. kinda wack. reduce to one lookup? check if bottleneck
-    pub fn lookup_type<'b>(&'b mut self, type_string: &'b str) -> TypeRef {
-        let str_ref = self.lookup_string(type_string);
-        
-        match self.types.iter().position(|t| t == type_string) {
+    pub fn is_builtin_type(&self, type_ref: TypeRef) -> bool {
+        type_ref.index < Self::BUILTIN_TYPE_COUNT
+    }
+
+    pub fn iter_type_refs(&self) -> impl Iterator<Item=TypeRef> {
+        (0..self.names.len())
+            .map(|i| TypeRef { index: i })
+    }
+
+    pub fn get_type_name(&self, type_ref: TypeRef) -> StrRef {
+        self.names[type_ref.index]
+    }
+
+    pub fn types_len(&self) -> usize {
+        self.names.len()
+    }
+
+    pub fn lookup_type(&mut self, str_ref: StrRef) -> TypeRef {
+        match self.names.iter().position(|t| *t == str_ref) {
             Some(index) => TypeRef { index },
             None => {
-                let index = self.types.len();
-                self.types.push(TypeData::new(str_ref));
+                let index = self.names.len();
+                self.names.push(str_ref);
                 TypeRef { index }
             }
         }
     }
-    
-    pub fn lookup_string<'b>(&'b mut self, string: &'b str) -> StrRef {
+}
+
+impl Strings {
+    pub fn new() -> Self {
+        let mut string_allocator = StaticBumpAllocator::new();
+
+        Strings {
+            string_allocator,
+            strings: Vec::new(),
+        }
+    }
+
+    pub fn alloc_str(&mut self, string: &str) -> StrRef {
+        StrRef { s: self.string_allocator.alloc_str(string) }
+    }
+
+    pub fn lookup_string(&mut self, string: &str) -> StrRef {
         match self.strings.iter().find(|s| *s == string) {
             Some(&s) => s,
             None => {
-                let s = StrRef { s: self.string_allocator.alloc_str(string) };
+                let s = self.alloc_str(string);
                 self.strings.push(s);
                 s
             }
@@ -100,17 +148,17 @@ impl<'a> Parser<'a> {
         &self.file[span.range()]
     }
 
-    pub fn take_next<'b>(&'b mut self) -> (Token, Span) {
+    pub fn take_next(&mut self) -> (Token, Span) {
         let t = self.tokens[self.position];
         self.position += 1;
         t
     }
 
-    pub fn peek<'b>(&'b self) -> (Token, Span) {
+    pub fn peek(&self) -> (Token, Span) {
         self.tokens[self.position]
     }
 
-    pub fn try_peek<'b>(&'b self) -> Option<(Token, Span)> {
+    pub fn try_peek(&self) -> Option<(Token, Span)> {
         if self.finished() {
             None
         } else {
@@ -118,7 +166,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn expect_token<'b>(&'b mut self, token: Token) -> Span {
+    pub fn expect_token(&mut self, token: Token) -> Span {
         let (tok, span) = self.peek();
         if tok != token {
             eprint!("expected {:?}, found", token);
@@ -129,7 +177,7 @@ impl<'a> Parser<'a> {
         span
     }
 
-    pub fn try_expect_token<'b>(&'b mut self, token: Token) -> Option<Span> {
+    pub fn try_expect_token(&mut self, token: Token) -> Option<Span> {
         match self.try_peek() {
             Some((tok, span)) if tok == token => {
                 self.position += 1;

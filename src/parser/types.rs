@@ -1,23 +1,6 @@
 use super::*;
 use crate::lexer::Token;
-
-#[derive(Debug)]
-pub struct TypeData { 
-    type_string: StrRef,
-}
-
-impl TypeData {
-    pub fn new(type_string: StrRef) -> Self {
-        Self { type_string }
-    }
-}
-
-impl std::cmp::PartialEq<&str> for TypeData {
-    fn eq(&self, other: &&str) -> bool { self.type_string == *other }
-}
-impl std::cmp::PartialEq<str> for TypeData {
-    fn eq(&self, other: &str) -> bool { self.type_string == *other }
-}
+use crate::typing::Type;
 
 #[derive(Debug)]
 pub struct ParsedFile {
@@ -29,7 +12,7 @@ pub struct ParsedFile {
 pub struct ParsedFn {
     pub name: StrRef,
     pub input_args: Box<[ParsedArgument]>,
-    pub return_type: ParsedType,
+    pub return_type: Type,
     pub body: ParsedBracedExpr,
 }
 
@@ -42,19 +25,13 @@ pub struct ParsedStruct {
 #[derive(Debug)]
 pub struct ParsedField {
     pub name: StrRef,
-    pub field_type: ParsedType,
+    pub field_type: Type,
 }
 
 #[derive(Debug)]
 pub struct ParsedArgument {
     pub name: StrRef,
-    pub arg_type: ParsedType,
-}
-
-#[derive(Debug)]
-pub struct ParsedType {
-    pub type_ref: TypeRef,
-    pub references: Box<[ParsedReference]>
+    pub arg_type: Type,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -64,9 +41,26 @@ pub enum ReferenceFlags {
     Unique = 1 << 2,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ParsedReference {
     pub flags: u8,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct References(pub tinyvec::ArrayVec<[ParsedReference; 14]>);
+
+impl References {
+    pub fn new() -> Self {
+        References(tinyvec::ArrayVec::new())
+    }
+
+    pub fn push(&mut self, reference: ParsedReference) {
+        if self.0.len() == 14 {
+            panic!("type cannot have more than 14 references")
+        }
+
+        self.0.push(reference)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -87,6 +81,15 @@ impl InfixOperator {
             _ => return None
         })
     }
+
+    pub fn result_type(self, expr_type: Type) -> Type {
+        match self {
+            InfixOperator::Add => expr_type,
+            InfixOperator::Subtract => expr_type,
+            InfixOperator::Multiply => expr_type,
+            InfixOperator::Equals => Type::from_ref(BOOL_TYPE),
+        }
+    }
 }
 
 /// Includes infix operators
@@ -95,14 +98,16 @@ impl InfixOperator {
 pub struct ParsedExpr {
     pub simple_exprs: Box<[ParsedSimpleExpr]>,
     pub operators: Box<[InfixOperator]>,
+    pub ret_type: Option<Type>,
 }
 
 /// No infix operators, allows fields and methods.
-/// such as a.test, (1 + 2).test(), { let x = 2; x }.field.test
+/// such as a.test, (1 + 2).test(), var.field().test
 #[derive(Debug)]
 pub struct ParsedSimpleExpr {
     pub expr_type: SimpleExprType,
-    pub accesses: Box<[ParsedExprAccess]>
+    pub accesses: Box<[ParsedExprAccess]>,
+    pub ret_type: Option<Type>,
 }
 
 /// field or method access
@@ -146,7 +151,7 @@ pub enum ParsedAtom {
         if_statement: ParsedIfStatement
     },
     Unit,
-    IntegerLiteral(isize),
+    IntegerLiteral(i64),
     FloatLiteral(f64),
 }
 
@@ -173,5 +178,8 @@ pub enum ParsedStatement {
     },
     If {
         if_statement: ParsedIfStatement
+    },
+    SubBracedExpr {
+        expr: ParsedBracedExpr,
     }
 }
