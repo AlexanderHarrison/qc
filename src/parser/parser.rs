@@ -21,7 +21,7 @@ pub const BOOL_TYPE: TypeRef = TypeRef { index: 3 };
 
 /// Comparing strings is expensive and done a lot in compilers.
 /// Using this type allows us to compare pointers rather than data
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash)]
 pub struct StrRef { s: &'static str, }
 
 impl std::cmp::PartialEq<&str> for StrRef {
@@ -37,6 +37,7 @@ impl std::cmp::PartialEq<str> for StrRef {
 impl std::cmp::PartialEq for StrRef {
     fn eq(&self, other: &StrRef) -> bool { self.s.as_ptr() == other.s.as_ptr() }
 }
+impl std::cmp::Eq for StrRef {}
 
 impl std::fmt::Display for StrRef {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

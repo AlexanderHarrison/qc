@@ -385,7 +385,7 @@ fn compile_simple_expr(c_ctx: &mut CompileCtx, s_ctx: &mut SegmentCtx, expr: &Pa
 
 fn compile_atom(c_ctx: &mut CompileCtx, s_ctx: &mut SegmentCtx, atom: &ParsedAtom) -> Data {
     match atom {
-        ParsedAtom::FunctionCall { name, arguments } => todo!(),
+        ParsedAtom::FunctionCall { name, arguments, ret_type } => todo!(),
         ParsedAtom::Variable { name } => Data { location: s_ctx.location_of(*name), temp: false },
         ParsedAtom::If { if_statement } => compile_if(c_ctx, s_ctx, if_statement).unwrap(),
         ParsedAtom::Unit => panic!("idk what to do here"),

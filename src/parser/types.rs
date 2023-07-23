@@ -143,6 +143,7 @@ pub enum ParsedAtom {
     FunctionCall {
         name: StrRef,
         arguments: Box<[ParsedExpr]>,
+        ret_type: Option<Type>,
     },
     Variable {
         name: StrRef,

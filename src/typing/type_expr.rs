@@ -102,8 +102,10 @@ fn type_simple_expr(ctx: &mut Context, expr: &mut ParsedSimpleExpr) -> Result<Ty
     let mut expr_type = match &mut expr.expr_type {
         SimpleExprType::InlineExpr(atom) => {
             match atom {
-                ParsedAtom::FunctionCall { name, arguments } => {
-                    type_function_call(ctx, *name, arguments)?
+                ParsedAtom::FunctionCall { name, arguments, ref mut ret_type } => {
+                    let fn_type = type_function_call(ctx, *name, arguments)?;
+                    *ret_type = Some(fn_type);
+                    ret_type
                 }
                 ParsedAtom::Variable { name } => {
                     match ctx.search(*name) {

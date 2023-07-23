@@ -294,6 +294,7 @@ impl Parsable for ParsedAtom {
                     ParsedAtom::FunctionCall {
                         name,
                         arguments,
+                        ret_type: None,
                     }
                 } else {
                     ParsedAtom::Variable { name }

@@ -8,7 +8,7 @@ mod parser;
 use parser::Parsable;
 mod alloc;
 mod typing;
-// mod mir;
+mod mir;
 mod compiler;
 mod layout;
 
